@@ -57,6 +57,30 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async consume(
+    handler: (message: amqp.ConsumeMessage) => Promise<void>,
+  ): Promise<void> {
+    await this.channel.prefetch(10);
+
+    await this.channel.consume(RABBITMQ_QUEUE, async (message) => {
+      if (!message) {
+        return;
+      }
+
+      try {
+        await handler(message);
+
+        this.channel.ack(message);
+      } catch (error) {
+        this.logger.error('Failed to process RabbitMQ message', error);
+
+        this.channel.nack(message, false, false);
+      }
+    });
+
+    this.logger.log(`Consuming from ${RABBITMQ_QUEUE}`);
+  }
+
   async onModuleDestroy() {
     await this.channel?.close();
     await this.connection?.close();
