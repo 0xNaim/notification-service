@@ -5,15 +5,11 @@ import {
   NotificationType,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { RabbitMQService } from '../rabbitmq/rabbitmq.service.js';
 import { CreateNotificationDto } from './dto/create-notification.dto.js';
 
 @Injectable()
 export class NotificationsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly rabbitMQ: RabbitMQService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async create(dto: CreateNotificationDto) {
     const existing = dto.idempotencyKey
@@ -29,30 +25,40 @@ export class NotificationsService {
     }
 
     try {
-      const notification = await this.prisma.notification.create({
-        data: {
-          userId: dto.userId,
-          type: dto.type as NotificationType,
-          recipient: dto.recipient,
-          subject: dto.subject,
-          message: dto.message,
-          idempotencyKey: dto.idempotencyKey,
-          status: NotificationStatus.PENDING,
-        },
+      const result = await this.prisma.$transaction(async (tx) => {
+        const notification = await tx.notification.create({
+          data: {
+            userId: dto.userId,
+            type: dto.type as NotificationType,
+            recipient: dto.recipient,
+            subject: dto.subject,
+            message: dto.message,
+            idempotencyKey: dto.idempotencyKey,
+            status: NotificationStatus.PENDING,
+          },
+        });
+
+        await tx.outboxEvent.create({
+          data: {
+            eventType: 'notification.created',
+            aggregateId: notification.id,
+            payload: {
+              notificationId: notification.id,
+              userId: notification.userId,
+              type: notification.type,
+              recipient: notification.recipient,
+              subject: notification.subject,
+              message: notification.message,
+              status: notification.status,
+              createdAt: notification.createdAt.toISOString(),
+            },
+          },
+        });
+
+        return notification;
       });
 
-      await this.rabbitMQ.publish({
-        notificationId: notification.id,
-        userId: notification.userId,
-        type: notification.type,
-        recipient: notification.recipient,
-        subject: notification.subject,
-        message: notification.message,
-        status: notification.status,
-        createdAt: notification.createdAt.toISOString(),
-      });
-
-      return notification;
+      return result;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

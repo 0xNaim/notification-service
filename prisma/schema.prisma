@@ -19,6 +19,12 @@ enum NotificationStatus {
   FAILED
 }
 
+enum OutboxStatus {
+  PENDING
+  PUBLISHED
+  FAILED
+}
+
 model Notification {
   idempotencyKey String? @unique
 
@@ -40,4 +46,21 @@ model Notification {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+}
+
+model OutboxEvent {
+  id          String @id @default(uuid())
+  eventType   String
+  aggregateId String
+  payload     Json
+
+  status OutboxStatus @default(PENDING)
+
+  attempts  Int     @default(0)
+  lastError String?
+
+  createdAt   DateTime  @default(now())
+  publishedAt DateTime?
+
+  @@index([status, createdAt])
 }
