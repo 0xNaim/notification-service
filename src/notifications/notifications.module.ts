@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { NotificationRateLimitGuard } from './notification-rate-limit.guard.js';
 import { NotificationsController } from './notifications.controller.js';
 import { NotificationsService } from './notifications.service.js';
 import { NotificationsWorker } from './notifications.worker.js';
@@ -11,7 +12,7 @@ import { NOTIFICATION_PROVIDER } from './providers/notification-provider.interfa
     NotificationsService,
     NotificationsWorker,
     FakeEmailProvider,
-
+    NotificationRateLimitGuard,
     {
       provide: NOTIFICATION_PROVIDER,
       useExisting: FakeEmailProvider,
