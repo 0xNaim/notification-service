@@ -5,23 +5,47 @@ import {
   NotificationType,
 } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RedisService } from '../redis/redis.service.js';
 import { CreateNotificationDto } from './dto/create-notification.dto.js';
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   async create(dto: CreateNotificationDto) {
-    const existing = dto.idempotencyKey
-      ? await this.prisma.notification.findUnique({
-          where: {
-            idempotencyKey: dto.idempotencyKey,
-          },
-        })
-      : null;
+    if (dto.idempotencyKey) {
+      const redisKey = `notification:idempotency:${dto.idempotencyKey}`;
 
-    if (existing) {
-      return existing;
+      const cachedNotificationId = await this.redis.getClient().get(redisKey);
+
+      if (cachedNotificationId) {
+        const notification = await this.prisma.notification.findUnique({
+          where: { id: cachedNotificationId },
+        });
+
+        if (notification) {
+          return notification;
+        }
+
+        await this.redis.getClient().del(redisKey);
+      }
+
+      const existing = await this.prisma.notification.findUnique({
+        where: {
+          idempotencyKey: dto.idempotencyKey,
+        },
+      });
+
+      if (existing) {
+        await this.redis
+          .getClient()
+          .set(redisKey, existing.id, 'EX', 60 * 60 * 24);
+
+        return existing;
+      }
     }
 
     try {
@@ -37,6 +61,14 @@ export class NotificationsService {
             status: NotificationStatus.PENDING,
           },
         });
+
+        if (result && result.idempotencyKey) {
+          const redisKey = `notification:idempotency:${result.idempotencyKey}`;
+
+          await this.redis
+            .getClient()
+            .set(redisKey, result.id, 'EX', 60 * 60 * 24);
+        }
 
         await tx.outboxEvent.create({
           data: {
