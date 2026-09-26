@@ -126,6 +126,15 @@ export class NotificationsWorker implements OnModuleInit {
     const attempt = notification.attempts;
 
     if (attempt > 3) {
+      await this.prisma.notification.update({
+        where: {
+          id: payload.notificationId,
+        },
+        data: {
+          status: 'FAILED',
+        },
+      });
+
       await this.rabbitMQ.publishToDLQ(payload);
 
       this.logger.error(`Notification ${payload.notificationId} moved to DLQ`);

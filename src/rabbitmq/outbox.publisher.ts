@@ -1,10 +1,18 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RabbitMQService } from './rabbitmq.service.js';
 
 @Injectable()
-export class OutboxPublisher implements OnModuleInit {
+export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(OutboxPublisher.name);
+
+  private timer?: NodeJS.Timeout;
+  private isPublishing = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -12,54 +20,86 @@ export class OutboxPublisher implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    this.start();
-  }
+    await this.publishPendingEvents();
 
-  private start() {
-    setInterval(() => {
+    this.timer = setInterval(() => {
       void this.publishPendingEvents();
     }, 1000);
   }
 
+  async onModuleDestroy() {
+    if (this.timer) {
+      clearInterval(this.timer);
+    }
+  }
+
   private async publishPendingEvents() {
-    const events = await this.prisma.outboxEvent.findMany({
-      where: {
-        status: 'PENDING',
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-      take: 10,
-    });
+    if (this.isPublishing) {
+      return;
+    }
 
-    for (const event of events) {
-      try {
-        await this.rabbitMQ.publish(event.payload);
+    this.isPublishing = true;
 
-        await this.prisma.outboxEvent.update({
-          where: { id: event.id },
-          data: {
-            status: 'PUBLISHED',
-            publishedAt: new Date(),
-            attempts: { increment: 1 },
-          },
-        });
-      } catch (error) {
-        await this.prisma.outboxEvent.update({
-          where: {
-            id: event.id,
-          },
-          data: {
-            status: 'FAILED',
-            attempts: {
-              increment: 1,
-            },
-            lastError: error instanceof Error ? error.message : 'Unknown error',
-          },
-        });
+    try {
+      const events = await this.prisma.outboxEvent.findMany({
+        where: {
+          status: 'PENDING',
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+        take: 10,
+      });
 
-        this.logger.error(`Failed to publish outbox event ${event.id}`);
+      for (const event of events) {
+        await this.publishEvent(event);
       }
+    } catch (error) {
+      this.logger.error(
+        'Outbox polling failed',
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
+  }
+
+  private async publishEvent(event: {
+    id: string;
+    payload: unknown;
+    attempts: number;
+  }): Promise<void> {
+    try {
+      await this.rabbitMQ.publish(event.payload);
+
+      await this.prisma.outboxEvent.update({
+        where: { id: event.id },
+        data: {
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+          attempts: { increment: 1 },
+          lastError: null,
+        },
+      });
+
+      this.logger.log(`Outbox event ${event.id} published`);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Unknown outbox publishing error';
+
+      await this.prisma.outboxEvent.update({
+        where: { id: event.id },
+        data: {
+          attempts: {
+            increment: 1,
+          },
+          lastError: errorMessage,
+        },
+      });
+
+      this.logger.error(
+        `Failed to publish outbox event ${event.id}: ${errorMessage}`,
+      );
     }
   }
 }

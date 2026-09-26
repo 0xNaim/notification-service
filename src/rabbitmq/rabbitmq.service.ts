@@ -25,7 +25,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQService.name);
 
   private connection: amqp.ChannelModel;
-  private channel: amqp.Channel;
+  private channel: amqp.ConfirmChannel;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -40,18 +40,22 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   }
 
   async publish(message: unknown): Promise<void> {
-    const payload = Buffer.from(JSON.stringify(message));
+    if (!this.channel) {
+      throw new Error('RabbitMQ channel is not initialized');
+    }
 
     const published = this.channel.publish(
       RABBITMQ_EXCHANGE,
       RABBITMQ_ROUTING_KEY,
-      payload,
+      Buffer.from(JSON.stringify(message)),
       { persistent: true, contentType: 'application/json' },
     );
 
     if (!published) {
-      this.logger.warn('RabbitMQ write buffer is full');
+      this.logger.warn('RabbitMQ backpressure detected');
     }
+
+    await this.channel.waitForConfirms();
   }
 
   async publishToRetry(retryQueue: string, message: unknown): Promise<void> {
@@ -122,7 +126,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     const url = this.configService.getOrThrow<string>('RABBITMQ_URL');
 
     this.connection = await amqp.connect(url);
-    this.channel = await this.connection.createChannel();
+    this.channel = await this.connection.createConfirmChannel();
 
     this.logger.log('RabbitMQ connected');
   }
