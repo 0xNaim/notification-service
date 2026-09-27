@@ -7,6 +7,7 @@ import {
   RETRY_3_QUEUE,
 } from '../rabbitmq/rabbitmq.constants.js';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service.js';
+import { RedisService } from '../redis/redis.service.js';
 import type { NotificationProvider } from './providers/notification-provider.interface.js';
 import { NOTIFICATION_PROVIDER } from './providers/notification-provider.interface.js';
 
@@ -24,6 +25,7 @@ export class NotificationsWorker implements OnModuleInit {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rabbitMQ: RabbitMQService,
+    private readonly redis: RedisService,
 
     @Inject(NOTIFICATION_PROVIDER)
     private readonly notificationProvider: NotificationProvider,
@@ -44,69 +46,87 @@ export class NotificationsWorker implements OnModuleInit {
   ): Promise<void> {
     this.logger.log(`Processing notification ${payload.notificationId}`);
 
-    const claimed = await this.prisma.notification.updateMany({
-      where: {
-        id: payload.notificationId,
-        status: 'PENDING',
-      },
-      data: {
-        status: 'PROCESSING',
-        attempts: {
-          increment: 1,
-        },
-      },
-    });
+    const lockKey = `notification:processing:${payload.notificationId}`;
 
-    if (claimed.count === 0) {
+    // Try to acquire a short-lived distributed lock.
+    const lockAcquired = await this.redis.acquireLock(lockKey, 30);
+
+    if (!lockAcquired) {
       this.logger.warn(
-        `Notification ${payload.notificationId} was already processed or is being processed`,
+        `Notification ${payload.notificationId} is already being processed`,
       );
 
       return;
     }
 
     try {
-      await this.notificationProvider.send({
-        recipient: payload.recipient,
-        subject: payload.subject,
-        message: payload.message,
-      });
-
-      await this.prisma.notification.update({
+      // Atomically claim the notification. Only PENDING notifications can be claimed.
+      const claimed = await this.prisma.notification.updateMany({
         where: {
           id: payload.notificationId,
-        },
-        data: {
-          status: 'SENT',
-          sentAt: new Date(),
-          lastError: null,
-        },
-      });
-
-      this.logger.log(
-        `Notification ${payload.notificationId} sent successfully`,
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Unknown notification provider error';
-
-      await this.prisma.notification.update({
-        where: {
-          id: payload.notificationId,
+          status: 'PENDING',
         },
         data: {
           status: 'PROCESSING',
-          lastError: errorMessage,
+          attempts: {
+            increment: 1,
+          },
         },
       });
 
-      this.logger.error(
-        `Notification ${payload.notificationId} failed: ${errorMessage}`,
-      );
+      if (claimed.count === 0) {
+        this.logger.warn(
+          `Notification ${payload.notificationId} was already processed or is not pending`,
+        );
 
-      await this.handleRetry(payload);
+        return;
+      }
+
+      try {
+        await this.notificationProvider.send({
+          recipient: payload.recipient,
+          subject: payload.subject,
+          message: payload.message,
+        });
+
+        await this.prisma.notification.update({
+          where: {
+            id: payload.notificationId,
+          },
+          data: {
+            status: 'SENT',
+            sentAt: new Date(),
+            lastError: null,
+          },
+        });
+
+        this.logger.log(
+          `Notification ${payload.notificationId} sent successfully`,
+        );
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : 'Unknown notification provider error';
+
+        await this.prisma.notification.update({
+          where: {
+            id: payload.notificationId,
+          },
+          data: {
+            status: 'PROCESSING',
+            lastError: errorMessage,
+          },
+        });
+
+        this.logger.error(
+          `Notification ${payload.notificationId} failed: ${errorMessage}`,
+        );
+
+        await this.handleRetry(payload);
+      }
+    } finally {
+      await this.redis.releaseLock(lockKey);
     }
   }
 

@@ -4,11 +4,14 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { RedisRateLimiterService } from '../redis/redis-rate-limiter.service.js';
 
 @Injectable()
 export class NotificationRateLimitGuard implements CanActivate {
+  private readonly logger = new Logger(NotificationRateLimitGuard.name);
+
   private readonly limit = 20;
   private readonly windowSeconds = 60;
 
@@ -16,6 +19,7 @@ export class NotificationRateLimitGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
+    const response = context.switchToHttp().getResponse();
 
     const userId = request.body?.userId;
 
@@ -30,22 +34,28 @@ export class NotificationRateLimitGuard implements CanActivate {
         this.windowSeconds,
       );
 
+      response.setHeader('X-RateLimit-Limit', result.limit);
+      response.setHeader('X-RateLimit-Remaining', result.remaining);
+      response.setHeader('Retry-After', result.retryAfter);
+
       if (!result.allowed) {
         throw new HttpException(
           `Rate limit exceeded. Try again in ${result.retryAfter} seconds.`,
           HttpStatus.TOO_MANY_REQUESTS,
         );
       }
+
+      return true;
     } catch (error) {
       if (error instanceof HttpException) {
         throw error;
       }
 
-      console.warn(
+      this.logger.warn(
         'Redis rate limiter unavailable. Continuing without rate limiting.',
       );
-    }
 
-    return true;
+      return true;
+    }
   }
 }
