@@ -62,14 +62,6 @@ export class NotificationsService {
           },
         });
 
-        if (result && result.idempotencyKey) {
-          const redisKey = `notification:idempotency:${result.idempotencyKey}`;
-
-          await this.redis
-            .getClient()
-            .set(redisKey, result.id, 'EX', 60 * 60 * 24);
-        }
-
         await tx.outboxEvent.create({
           data: {
             eventType: 'notification.created',
@@ -89,6 +81,14 @@ export class NotificationsService {
 
         return notification;
       });
+
+      if (result && result.idempotencyKey) {
+        const redisKey = `notification:idempotency:${result.idempotencyKey}`;
+
+        await this.redis
+          .getClient()
+          .set(redisKey, result.id, 'EX', 60 * 60 * 24);
+      }
 
       return result;
     } catch (error) {
