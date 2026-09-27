@@ -7,7 +7,6 @@ import { FakeEmailProvider } from './providers/fake-email.provider.js';
 import { NOTIFICATION_PROVIDER } from './providers/notification-provider.interface.js';
 
 @Module({
-  controllers: [NotificationsController],
   providers: [
     NotificationsService,
     NotificationsWorker,
@@ -18,5 +17,6 @@ import { NOTIFICATION_PROVIDER } from './providers/notification-provider.interfa
       useExisting: FakeEmailProvider,
     },
   ],
+  controllers: [NotificationsController],
 })
 export class NotificationsModule {}

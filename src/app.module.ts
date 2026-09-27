@@ -4,6 +4,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RabbitMQModule } from './rabbitmq/rabbitmq.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { MetricsModule } from './metrics/metrics.module.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { RedisModule } from './redis/redis.module.js';
     RabbitMQModule,
     RedisModule,
     NotificationsModule,
+    MetricsModule,
   ],
 })
 export class AppModule {}
