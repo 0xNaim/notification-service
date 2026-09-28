@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import type { ConsumeMessage } from 'amqplib';
+import { MetricsService } from '../metrics/metrics.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
   RETRY_1_QUEUE,
@@ -13,6 +14,7 @@ import { NOTIFICATION_PROVIDER } from './providers/notification-provider.interfa
 
 interface NotificationCreatedMessage {
   notificationId: string;
+  type: string;
   recipient: string;
   subject: string;
   message: string;
@@ -26,6 +28,7 @@ export class NotificationsWorker implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly rabbitMQ: RabbitMQService,
     private readonly redis: RedisService,
+    private readonly metrics: MetricsService,
 
     @Inject(NOTIFICATION_PROVIDER)
     private readonly notificationProvider: NotificationProvider,
@@ -44,6 +47,8 @@ export class NotificationsWorker implements OnModuleInit {
   private async processMessage(
     payload: NotificationCreatedMessage,
   ): Promise<void> {
+    const startedAt = process.hrtime.bigint();
+
     this.logger.log(`Processing notification ${payload.notificationId}`);
 
     const lockKey = `notification:processing:${payload.notificationId}`;
@@ -100,6 +105,20 @@ export class NotificationsWorker implements OnModuleInit {
           },
         });
 
+        const durationSeconds =
+          Number(process.hrtime.bigint() - startedAt) / 1_000_000_000;
+
+        this.metrics.notificationsSentTotal.inc({
+          type: payload.type,
+        });
+
+        this.metrics.notificationProcessingDuration.observe(
+          {
+            type: payload.type,
+          },
+          durationSeconds,
+        );
+
         this.logger.log(
           `Notification ${payload.notificationId} sent successfully`,
         );
@@ -108,6 +127,10 @@ export class NotificationsWorker implements OnModuleInit {
           error instanceof Error
             ? error.message
             : 'Unknown notification provider error';
+
+        this.metrics.notificationsFailedTotal.inc({
+          type: payload.type,
+        });
 
         await this.prisma.notification.update({
           where: {

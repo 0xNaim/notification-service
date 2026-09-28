@@ -4,6 +4,7 @@ import {
   NotificationStatus,
   NotificationType,
 } from '../generated/prisma/enums.js';
+import { MetricsService } from '../metrics/metrics.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import { CreateNotificationDto } from './dto/create-notification.dto.js';
@@ -13,6 +14,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
+    private readonly metrics: MetricsService,
   ) {}
 
   async create(dto: CreateNotificationDto) {
@@ -89,6 +91,10 @@ export class NotificationsService {
           .getClient()
           .set(redisKey, result.id, 'EX', 60 * 60 * 24);
       }
+
+      this.metrics.notificationsCreatedTotal.inc({
+        type: result.type,
+      });
 
       return result;
     } catch (error) {

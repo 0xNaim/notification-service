@@ -4,6 +4,7 @@ import { MetricsController } from './metrics.controller.js';
 
 @Module({
   providers: [MetricsService],
-  controllers: [MetricsController]
+  controllers: [MetricsController],
+  exports: [MetricsService],
 })
 export class MetricsModule {}
