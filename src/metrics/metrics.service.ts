@@ -15,6 +15,11 @@ export class MetricsService {
   readonly notificationsSentTotal: Counter<string>;
   readonly notificationsFailedTotal: Counter<string>;
   readonly notificationProcessingDuration: Histogram<string>;
+  readonly rabbitmqPublishedTotal: Counter<string>;
+  readonly rabbitmqConsumedTotal: Counter<string>;
+  readonly notificationRetriesTotal: Counter<string>;
+  readonly notificationDlqTotal: Counter<string>;
+  readonly redisErrorsTotal: Counter<string>;
 
   constructor() {
     this.registry = new Registry();
@@ -65,6 +70,39 @@ export class MetricsService {
       labelNames: ['type'],
       registers: [this.registry],
       buckets: [0.1, 0.25, 0.5, 1, 2, 5, 10, 30],
+    });
+
+    this.rabbitmqPublishedTotal = new Counter({
+      name: 'notification_service_rabbitmq_published_total',
+      help: 'Total number of messages published to RabbitMQ',
+      labelNames: ['routing_key'],
+      registers: [this.registry],
+    });
+
+    this.rabbitmqConsumedTotal = new Counter({
+      name: 'notification_service_rabbitmq_consumed_total',
+      help: 'Total number of messages consumed from RabbitMQ',
+      labelNames: ['queue'],
+      registers: [this.registry],
+    });
+
+    this.notificationRetriesTotal = new Counter({
+      name: 'notification_service_notification_retries_total',
+      help: 'Total number of notification retries',
+      labelNames: ['attempt'],
+      registers: [this.registry],
+    });
+
+    this.notificationDlqTotal = new Counter({
+      name: 'notification_service_notification_dlq_total',
+      help: 'Total number of notifications moved to DLQ',
+      registers: [this.registry],
+    });
+
+    this.redisErrorsTotal = new Counter({
+      name: 'notification_service_redis_errors_total',
+      help: 'Total number of Redis errors',
+      registers: [this.registry],
     });
   }
 

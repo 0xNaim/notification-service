@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
+import { MetricsService } from '../metrics/metrics.service.js';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -13,7 +14,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   private client: Redis;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const url = this.configService.getOrThrow<string>('REDIS_URL');
@@ -32,6 +36,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.client.on('error', (error) => {
+      this.metrics.redisErrorsTotal.inc();
       this.logger.error(
         `Redis error: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );

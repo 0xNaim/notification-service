@@ -47,6 +47,10 @@ export class NotificationsWorker implements OnModuleInit {
   private async processMessage(
     payload: NotificationCreatedMessage,
   ): Promise<void> {
+    this.metrics.rabbitmqConsumedTotal.inc({
+      queue: 'notification.queue',
+    });
+
     const startedAt = process.hrtime.bigint();
 
     this.logger.log(`Processing notification ${payload.notificationId}`);
@@ -168,6 +172,10 @@ export class NotificationsWorker implements OnModuleInit {
 
     const attempt = notification.attempts;
 
+    this.metrics.notificationRetriesTotal.inc({
+      attempt: String(attempt),
+    });
+
     if (attempt > 3) {
       await this.prisma.notification.update({
         where: {
@@ -179,6 +187,8 @@ export class NotificationsWorker implements OnModuleInit {
       });
 
       await this.rabbitMQ.publishToDLQ(payload);
+
+      this.metrics.notificationDlqTotal.inc();
 
       this.logger.error(`Notification ${payload.notificationId} moved to DLQ`);
 

@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
+import { MetricsService } from '../metrics/metrics.service.js';
 import {
   DLQ_QUEUE,
   DLQ_ROUTING_KEY,
@@ -27,7 +28,10 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private connection: amqp.ChannelModel;
   private channel: amqp.ConfirmChannel;
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   async onModuleInit() {
     await this.connect();
@@ -56,6 +60,10 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     }
 
     await this.channel.waitForConfirms();
+
+    this.metrics.rabbitmqPublishedTotal.inc({
+      routing_key: RABBITMQ_ROUTING_KEY,
+    });
   }
 
   async publishToRetry(retryQueue: string, message: unknown): Promise<void> {

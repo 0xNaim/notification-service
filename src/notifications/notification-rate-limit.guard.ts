@@ -6,6 +6,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { MetricsService } from '../metrics/metrics.service.js';
 import { RedisRateLimiterService } from '../redis/redis-rate-limiter.service.js';
 
 @Injectable()
@@ -15,7 +16,10 @@ export class NotificationRateLimitGuard implements CanActivate {
   private readonly limit = 20;
   private readonly windowSeconds = 60;
 
-  constructor(private readonly rateLimiter: RedisRateLimiterService) {}
+  constructor(
+    private readonly rateLimiter: RedisRateLimiterService,
+    private readonly metrics: MetricsService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
@@ -50,6 +54,8 @@ export class NotificationRateLimitGuard implements CanActivate {
       if (error instanceof HttpException) {
         throw error;
       }
+
+      this.metrics.redisErrorsTotal.inc();
 
       this.logger.warn(
         'Redis rate limiter unavailable. Continuing without rate limiting.',

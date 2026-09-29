@@ -1,0 +1,60 @@
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: notification-service
+    folder: Notification Service
+    interval: 1m
+    rules:
+      - uid: notification-dlq
+        title: Notification moved to DLQ
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: critical
+        annotations:
+          summary: A notification was moved to the DLQ in the last 5 minutes (permanently failed).
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(increase(notification_service_notification_dlq_total[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+      - uid: notification-http-5xx
+        title: HTTP 5xx responses
+        condition: C
+        for: 0s
+        noDataState: OK
+        execErrState: Error
+        labels:
+          severity: warning
+        annotations:
+          summary: The service is returning HTTP 5xx responses.
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: sum(rate(notification_service_http_requests_total{status_code=~"5.."}[5m]))
+              instant: true
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
