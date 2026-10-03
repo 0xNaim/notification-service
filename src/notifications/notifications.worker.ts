@@ -1,5 +1,4 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import type { ConsumeMessage } from 'amqplib';
 import { MetricsService } from '../metrics/metrics.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -9,16 +8,9 @@ import {
 } from '../rabbitmq/rabbitmq.constants.js';
 import { RabbitMQService } from '../rabbitmq/rabbitmq.service.js';
 import { RedisService } from '../redis/redis.service.js';
+import type { NotificationCreatedMessage } from './notification.message.js';
 import type { NotificationProvider } from './providers/notification-provider.interface.js';
 import { NOTIFICATION_PROVIDER } from './providers/notification-provider.interface.js';
-
-interface NotificationCreatedMessage {
-  notificationId: string;
-  type: string;
-  recipient: string;
-  subject: string;
-  message: string;
-}
 
 @Injectable()
 export class NotificationsWorker implements OnModuleInit {
@@ -35,13 +27,7 @@ export class NotificationsWorker implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.rabbitMQ.consume(async (message: ConsumeMessage) => {
-      const payload = JSON.parse(
-        message.content.toString(),
-      ) as NotificationCreatedMessage;
-
-      await this.processMessage(payload);
-    });
+    await this.rabbitMQ.consume((payload) => this.processMessage(payload));
   }
 
   private async processMessage(

@@ -3,7 +3,7 @@ import {
   NotificationType,
 } from '../generated/prisma/enums.js';
 
-export interface NotificationCreateMessage {
+export interface NotificationCreatedMessage {
   notificationId: string;
   userId: string;
   type: NotificationType;
