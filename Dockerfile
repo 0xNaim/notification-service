@@ -30,6 +30,7 @@ FROM node:22-alpine AS production
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=384"
 
 RUN apk add --no-cache curl \
     && addgroup -S appgroup \
