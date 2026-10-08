@@ -58,7 +58,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   async releaseLock(key: string): Promise<void> {
-    await this.client.debug(key);
+    await this.client.del(key);
   }
 
   getClient(): Redis {
