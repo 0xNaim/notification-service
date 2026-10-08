@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MetricsService } from '../metrics/metrics.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -21,12 +22,22 @@ export class NotificationsWorker implements OnModuleInit {
     private readonly rabbitMQ: RabbitMQService,
     private readonly redis: RedisService,
     private readonly metrics: MetricsService,
+    private readonly configService: ConfigService,
 
     @Inject(NOTIFICATION_PROVIDER)
     private readonly notificationProvider: NotificationProvider,
   ) {}
 
   async onModuleInit() {
+    const role = this.configService.get<string>('PROCESS_ROLE');
+
+    if (role !== 'worker') {
+      this.logger.log('Notifications worker disabled for API process');
+      return;
+    }
+
+    this.logger.log('Notifications worker started');
+
     await this.rabbitMQ.consume((payload) => this.processMessage(payload));
   }
 

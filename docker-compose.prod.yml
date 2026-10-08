@@ -43,22 +43,22 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: migrate
     env_file:
       - .env.production
-    command: ["npx", "prisma", "migrate", "deploy"]
     depends_on:
       postgres:
         condition: service_healthy
 
-  app:
+  api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: notification-service
-    mem_limit: 512m
-    cpus: 1.0
+    container_name: notification-api
     env_file:
       - .env.production
+    environment:
+      PROCESS_ROLE: api
     ports:
       - "3000:3000"
     depends_on:
@@ -69,6 +69,28 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    mem_limit: 512m
+    cpus: "1.0"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.production
+    environment:
+      PROCESS_ROLE: worker
+    command: ["node", "dist/worker.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: "1.0"
 
 volumes:
   postgres_data:

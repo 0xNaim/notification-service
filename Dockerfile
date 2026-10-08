@@ -1,6 +1,4 @@
-# -----------------------------
 # Stage 1: Build
-# -----------------------------
 FROM node:22-alpine AS builder
 
 WORKDIR /app
@@ -21,10 +19,14 @@ COPY src ./src
 
 RUN npm run build
 
+# Stage 2: Migrate (full deps incl. prisma CLI)
+FROM builder AS migrate
 
-# -----------------------------
-# Stage 2: Production
-# -----------------------------
+COPY prisma.config.ts ./
+
+CMD ["npx", "prisma", "migrate", "deploy"]
+
+# Stage 3: Production
 FROM node:22-alpine AS production
 
 WORKDIR /app

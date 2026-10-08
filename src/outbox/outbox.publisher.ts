@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { hostname } from 'os';
 import { OutboxEvent, OutboxStatus } from '../generated/prisma/client.js';
@@ -24,9 +25,17 @@ export class OutboxPublisher implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly rabbitMQ: RabbitMQService,
+    private readonly configService: ConfigService,
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const role = this.configService.get<string>('PROCESS_ROLE');
+
+    if (role !== 'worker') {
+      this.logger.log('Outbox publisher disabled for API process');
+      return;
+    }
+
     this.logger.log(`Outbox publisher started: ${this.publisherId}`);
 
     await this.publishPendingEvents();
