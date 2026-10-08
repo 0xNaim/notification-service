@@ -21,6 +21,7 @@ enum NotificationStatus {
 
 enum OutboxStatus {
   PENDING
+  CLAIMED
   PUBLISHED
   FAILED
 }
@@ -59,8 +60,12 @@ model OutboxEvent {
   attempts  Int     @default(0)
   lastError String?
 
+  claimedAt DateTime?
+  claimedBy String?
+
   createdAt   DateTime  @default(now())
   publishedAt DateTime?
 
   @@index([status, createdAt])
+  @@index([status, claimedAt])
 }

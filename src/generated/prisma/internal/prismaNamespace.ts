@@ -632,6 +632,8 @@ export const OutboxEventScalarFieldEnum = {
   status: 'status',
   attempts: 'attempts',
   lastError: 'lastError',
+  claimedAt: 'claimedAt',
+  claimedBy: 'claimedBy',
   createdAt: 'createdAt',
   publishedAt: 'publishedAt'
 } as const

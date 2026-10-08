@@ -29,6 +29,7 @@ export type NotificationStatus = (typeof NotificationStatus)[keyof typeof Notifi
 
 export const OutboxStatus = {
   PENDING: 'PENDING',
+  CLAIMED: 'CLAIMED',
   PUBLISHED: 'PUBLISHED',
   FAILED: 'FAILED'
 } as const
